@@ -15,7 +15,7 @@ def load_raw_sentence_records(path, limit=None):
             records.append({
                 "sentence_id": row["id"],
                 "raw_text": row["text"],
-                "normalized_text": row["text"],  # Initialize with raw text
+                "normalized_text": row["text"],
                 "events": []
             })
     return records
@@ -65,7 +65,7 @@ def is_structural_noise(text: str) -> bool:
     if text.startswith("|") and "|" in text:  # Tables
         return True
     
-    # Figure/Table captions (entire lines that are just labels)
+    # Figure/Table captions
     if re.match(r"^(Figure|Table)\s+\d+", text, re.IGNORECASE):
         return True
     
@@ -75,7 +75,7 @@ def is_structural_noise(text: str) -> bool:
 def is_date_only(text: str) -> bool:
     """Detect standalone date lines."""
     text = text.strip()
-    date_patterns = [
+    date_patterns = [                         # Pattern such as
         r"^[A-Za-z]+\s+\d{1,2},\s+\d{4}$",    # May 18, 2021
         r"^\d{4}$",                            # 2021
         r"^\d{1,2}/\d{1,2}/\d{2,4}$"          # 05/18/2021
@@ -103,6 +103,14 @@ def strip_markdown_emphasis(text: str) -> str:
     return re.sub(r"^\*+|\*+$", "", text).strip()
 
 
+def strip_inline_markdown_emphasis(text: str) -> str:
+    """
+    Remove inline markdown emphasis like *word*, **word**, ***word***
+    without touching surrounding text.
+    """
+    return re.sub(r"\*{1,3}([^*\n]+)\*{1,3}", r"\1", text)
+
+
 def strip_bullet_markers(text: str) -> str:
     """Remove bullet point markers (*, +, -)."""
     return re.sub(r"^[\*\+\-]\s*", "", text)
@@ -119,9 +127,12 @@ def replace_iocs_with_placeholders(text: str) -> str:
     
     # IPv4 addresses
     text = re.sub(
-        r"\b\d{1,3}(?:\.\d{1,3}){3}\b", 
-        "<IP_ADDRESS>", 
-        text)
+        r"\b(?:\d{1,3}(?:\.|\[\.\])){3}\d{1,3}\b",
+        lambda m: "<IP_ADDRESS>"
+        if any(len(octet) >= 2 for octet in re.split(r"\.|\[\.\]", m.group()))
+        else m.group(),
+        text
+    )
     
     # Email addresses
     text = re.sub(
@@ -152,13 +163,31 @@ def normalize_ioc_placeholders(text: str) -> str:
 
 
 def normalize_section_header(text: str) -> str | None:
-    """Convert markdown headers to prose: '## Security' -> 'This section discusses security.'"""
-    if not re.match(r"^#{1,6}\s+", text):
-        return None
-    
-    clean = re.sub(r"^#{1,6}\s*", "", text)
-    clean = strip_markdown_emphasis(clean)
-    return f"This section discusses {clean.lower()}."
+    """
+    Convert section-style headers into prose.
+    Handles:
+      - Markdown headers: ## Security
+      - Numbered subsections: 1.2.1.1 Socat
+    """
+
+    text = text.strip()
+
+    # Case 1: Markdown headers (##, ###, etc.)
+    if re.match(r"^#{1,6}\s+", text):
+        clean = re.sub(r"^#{1,6}\s*", "", text)
+        clean = re.sub(r"^\d+(\.\d+)*\s*", "", clean)
+        clean = strip_markdown_emphasis(clean)
+        return f"This section discusses {clean}."
+
+    # Case 2: Numbered subsection headers (e.g., 1.2.1.1 Socat)
+    m = re.match(r"^(\d+(?:\.\d+)+)\s+(.+)$", text)
+    if m:
+        _, title = m.groups()
+        title = strip_markdown_emphasis(title)
+        return f"This subsection discusses {title}."
+
+    return None
+
 
 
 def normalize_figure_caption(text: str) -> str | None:
@@ -170,25 +199,29 @@ def normalize_figure_caption(text: str) -> str | None:
     
     fig_num, description = match.groups()
     description = strip_markdown_emphasis(description)
-    return f"Figure {fig_num} illustrates {description.lower()}."
+    return f"Figure {fig_num} illustrates {description}."
 
 
 def normalize_bullet_artifact(text: str) -> str | None:
-    """Convert artifact bullets to prose: 'IP - malware.dll' -> 'The malware.dll component was hosted at IP.'"""
+    """
+    Convert bullet-style artifact descriptions into prose.
+    """
+
     if " - " not in text:
         return None
-    
-    parts = text.split(" - ", 1)
-    if len(parts) != 2:
+
+    left, right = text.split(" - ", 1)
+
+    if len(left.split()) > 5:
         return None
-    
-    location, artifact = parts
-    return f"The {artifact.strip()} component was hosted at {location.strip()}."
+    if len(right.split()) < 4:
+        return None
+
+    return f"The {left.strip()} component is {right.strip().rstrip('.') }."
 
 
 def rewrite_structural_elements(text: str) -> str:
     """Apply structural rewriting rules in priority order."""
-    # Try each rewriting function in order
     for rewrite_fn in [
         normalize_section_header,
         normalize_figure_caption,
@@ -228,16 +261,17 @@ def apply_text_normalization(records):
         # 1. Basic cleanup
         text = remove_markdown_links(text)
         text = strip_bullet_markers(text)
+        text = strip_inline_markdown_emphasis(text)
         text = strip_markdown_emphasis(text)
         
-        # 2. Structural rewriting (must happen before IoC replacement)
+        # 2. Structural rewriting
         text = rewrite_structural_elements(text)
         
         # 3. IoC placeholding
         text = replace_iocs_with_placeholders(text)
         text = normalize_ioc_placeholders(text)
         
-        # 4. Title normalization (last, to avoid interfering with other rules)
+        # 4. Title normalization
         text = normalize_colon_titles(text)
         
         record["normalized_text"] = text
