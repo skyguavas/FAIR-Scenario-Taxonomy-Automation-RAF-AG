@@ -15,8 +15,7 @@ def load_raw_sentence_records(path, limit=None):
             records.append({
                 "sentence_id": row["id"],
                 "raw_text": row["text"],
-                "normalized_text": row["text"],
-                "events": []
+                "normalized_text": row["text"]
             })
     return records
 
@@ -297,7 +296,7 @@ if __name__ == "__main__":
     # Write results
     write_sample_results(
         records,
-        output_path="outputs/sample_results.json",
+        output_path="outputs/A1_results.json",
         limit=None
     )
-    print("Results written to outputs/sample_results.json")
+    print("Results written to outputs/A1_results.json")
