@@ -54,53 +54,63 @@ import re
 
 def extract_event_hybrid(text):
     doc = nlp(text)
-    events = []
 
     known_actors = ["APT28", "APT29", "Lazarus", "FIN7", "Emotet", "TrickBot"]
     bad_actors = {"it", "this", "that", "malware", "trojan", "virus"}
 
+    # --- find ROOT verb ---
+    root = None
     for token in doc:
-        if token.pos_ != "VERB":
-            continue
+        if token.dep_ == "ROOT" and token.pos_ == "VERB":
+            root = token
+            break
 
-        action = token.lemma_
-        actor = None
-        obj = None
+    # # No verb → no event
+    # if root is None:
+    #     return []
+    if root is None:
+        return [{
+            "actor": None,
+            "action": None,
+            "object": None
+        }]
 
-        # --- dependency parsing ---
-        for child in token.children:
-            if child.dep_ in ("nsubj", "nsubjpass"):
-                actor = child.text
+    action = root.lemma_
+    actor = None
+    obj = None
 
-            if child.dep_ in ("dobj", "obj"):
-                if child.pos_ == "NUM":
-                    continue
+    # --- dependency parsing ---
+    for child in root.children:
+        if child.dep_ in ("nsubj", "nsubjpass"):
+            actor = child.text
+
+        if child.dep_ in ("dobj", "obj"):
+            if child.pos_ != "NUM":
                 obj = child.text
 
-        # --- rule-based improvements (PER EVENT) ---
+    # --- rule-based improvements ---
 
-        # CVE overrides object
-        cve = re.search(r'CVE-\d{4}-\d+', text)
-        if cve:
-            obj = cve.group()
+    # CVE overrides object
+    cve = re.search(r"CVE-\d{4}-\d+", text)
+    if cve:
+        obj = cve.group()
 
-        # Known actor override
-        for known in known_actors:
-            if known in text:
-                actor = known
-                break
+    # Known actor override
+    for known in known_actors:
+        if known in text:
+            actor = known
+            break
 
-        # Filter bad actors
-        if actor and actor.lower() in bad_actors:
-            actor = None
+    # Filter bad actors
+    if actor and actor.lower() in bad_actors:
+        actor = None
 
-        events.append({
-            "actor": actor,
-            "action": action,
-            "object": obj
-        })
+    return [{
+        "actor": actor,
+        "action": action,
+        "object": obj
+    }]
 
-    return events
 
 
 import json
@@ -124,7 +134,7 @@ def main():
 
     
     # Save
-    with open("outputs/A2multiple_events.json", "w", encoding='utf-8') as f:
+    with open("outputs/A2single_events.json", "w", encoding='utf-8') as f:
         json.dump(events, f, indent=2, ensure_ascii=False)
     
     # ✅ ADD VERIFICATION HERE

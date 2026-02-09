@@ -81,12 +81,30 @@ def is_date_only(text: str) -> bool:
     ]
     return any(re.match(p, text) for p in date_patterns)
 
+def is_api_hash_mapping(text: str) -> bool:
+    return bool(
+        re.fullmatch(
+            r"0x[a-fA-F0-9]+\s*->\s*[A-Za-z0-9_\\]+",
+            text.strip()
+        )
+    )
+
+def is_ioc_only(text: str) -> bool:
+    text = text.strip()
+
+    return bool(
+        re.fullmatch(
+            r"(?:[A-Za-z0-9-]+\.)*[A-Za-z0-9-]+(?:\[\.\][A-Za-z0-9-]+)+",
+            text
+        )
+    )
+
 
 def apply_filters(records):
     """Apply noise and date filters to remove unwanted records."""
     filtered = []
     for r in records:
-        if is_structural_noise(r["raw_text"]) or is_date_only(r["raw_text"]):
+        if is_structural_noise(r["raw_text"]) or is_date_only(r["raw_text"]) or is_api_hash_mapping(r["raw_text"]) or is_ioc_only(r["raw_text"]):
             continue
         filtered.append(r)
     return filtered
@@ -200,6 +218,34 @@ def normalize_figure_caption(text: str) -> str | None:
     description = strip_markdown_emphasis(description)
     return f"Figure {fig_num} illustrates {description}."
 
+def normalize_bullet_definition(text: str) -> str | None:
+    """
+    Convert definition-style bullets like:
+    'Airbreak (also called "Orz"): Malware ...'
+    'Web Shells: In organizations that were previously compromised ...'
+    """
+
+    m = re.match(r"^(.{1,60})\s*:\s*(.+)", text)
+    if not m:
+        return None
+
+    subject, rest = m.groups()
+
+    # Right side must be sentence-like
+    if len(rest.split()) < 6:
+        return None
+
+    # Subject should look like a noun phrase, not a sentence
+    if re.search(r"[.!?]$", subject):
+        return None
+
+    subject = subject.strip()
+
+    # Decide copula
+    copula = "are" if subject.lower().endswith("s") else "is"
+
+    return f"{subject} {copula} {rest}"
+
 
 def normalize_bullet_artifact(text: str) -> str | None:
     """
@@ -222,6 +268,7 @@ def normalize_bullet_artifact(text: str) -> str | None:
 def rewrite_structural_elements(text: str) -> str:
     """Apply structural rewriting rules in priority order."""
     for rewrite_fn in [
+        normalize_bullet_definition,
         normalize_section_header,
         normalize_figure_caption,
         normalize_bullet_artifact
@@ -257,18 +304,22 @@ def apply_text_normalization(records):
     for record in records:
         text = record["normalized_text"]
         
-        # 1. Basic cleanup
+        # 1. Initial IoC placeholding
+        text = replace_iocs_with_placeholders(text)
+        text = normalize_ioc_placeholders(text)
+
+        # 2. Basic cleanup
         text = remove_markdown_links(text)
         text = strip_bullet_markers(text)
         text = strip_inline_markdown_emphasis(text)
         text = strip_markdown_emphasis(text)
         
-        # 2. Structural rewriting
+        # 3. Structural rewriting
         text = rewrite_structural_elements(text)
         
         # 3. IoC placeholding
-        text = replace_iocs_with_placeholders(text)
-        text = normalize_ioc_placeholders(text)
+        # text = replace_iocs_with_placeholders(text)
+        # text = normalize_ioc_placeholders(text)
         
         # 4. Title normalization
         text = normalize_colon_titles(text)
