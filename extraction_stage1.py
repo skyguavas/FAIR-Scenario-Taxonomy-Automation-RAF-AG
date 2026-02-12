@@ -54,69 +54,131 @@ import re
 
 def extract_event_hybrid(text):
     doc = nlp(text)
+    events = []
 
-    known_actors = ["APT1", "APT28", "APT29", "APT32", "APT33", "APT34", "APT41", "Lazarus", "FIN7", "FIN12", "TA505", "Sandworm",
-                    "Cozy Bear", "Fancy Bear", "Emotet", "TrickBot", "QakBot", "IcedID"]
-
+    known_actors = ["APT28", "APT29", "Lazarus", "FIN7", "Emotet", "TrickBot"]
     bad_actors = {"it", "this", "that", "malware", "trojan", "virus"}
 
-    # --- find ROOT verb ---
-    root = None
     for token in doc:
-        if token.dep_ == "ROOT" and token.pos_ == "VERB":
-            root = token
-            break
+        # Only consider actual verb predicates (skip AUX like "is/was/has")
+        if token.pos_ != "VERB" or token.dep_ == "aux":
+            continue
 
-
-    # No verb → no event (design choice)
-    if root is None:
-        return [{
-            "actor": None,
-            "action": None,
-            "object": None
-        }]
-
-    action = root.lemma_
-    actor = None
-    obj = None
-
-    # --- dependency parsing from ROOT ---
-    for child in root.children:
-        if child.dep_ in ("nsubj", "nsubjpass"):
-            span = doc[child.left_edge.i : child.right_edge.i + 1]
-            actor = span.text
-
-        # if child.dep_ in ("dobj", "obj"):
-        #     if child.pos_ != "NUM":
-        #         obj = child.text
-        if child.dep_ in ("dobj", "obj", "pobj"):
-            if child.pos_ == "NUM":
-                continue
-            span = doc[child.left_edge.i : child.right_edge.i + 1]
-            obj = span.text
-    
-    # --- rule-based improvements ---
-
-    # CVE overrides object
-    cve = re.search(r"CVE-\d{4}-\d+", text)
-    if cve:
-        obj = cve.group()
-
-    # Known actor override
-    for known in known_actors:
-        if known in text:
-            actor = known
-            break
-
-    # Filter bad actors
-    if actor and actor.lower() in bad_actors:
+        action = token.lemma_
         actor = None
+        obj = None
 
-    return [{
-        "actor": actor,
-        "action": action,
-        "object": obj
-    }]
+        # --- dependency parsing from THIS verb (fix: root -> token) ---
+        for child in token.children:
+            if child.dep_ in ("nsubj", "nsubjpass"):
+                span = doc[child.left_edge.i : child.right_edge.i + 1]
+                actor = span.text
+
+            if child.dep_ in ("dobj", "obj", "pobj"):
+                if child.pos_ == "NUM":
+                    continue
+                span = doc[child.left_edge.i : child.right_edge.i + 1]
+                obj = span.text
+
+        # --- rule-based improvements (PER EVENT) ---
+
+        # CVE overrides object
+        cve = re.search(r"CVE-\d{4}-\d+", text)
+        if cve:
+            obj = cve.group()
+
+        # Known actor override
+        for known in known_actors:
+            if known in text:
+                actor = known
+                break
+
+        # Filter bad actors
+        if actor and actor.strip().lower() in bad_actors:
+            actor = None
+
+        # Skip empty events (optional but usually helpful)
+        if actor is None and obj is None:
+            continue
+
+        events.append({
+            "actor": actor,
+            "action": action,
+            "object": obj
+        })
+
+    # Keep your original fallback behavior if nothing found
+    if not events:
+        return [{"actor": None, "action": None, "object": None}]
+
+    return events
+
+
+# def extract_event_hybrid(text):
+#     doc = nlp(text)
+#     events = []
+#     known_actors = ["APT1", "APT28", "APT29", "APT32", "APT33", "APT34", "APT41", "Lazarus", "FIN7", "FIN12", "TA505", "Sandworm",
+#                     "Cozy Bear", "Fancy Bear", "Emotet", "TrickBot", "QakBot", "IcedID"]
+
+#     bad_actors = {"it", "this", "that", "malware", "trojan", "virus"}
+
+#     # --- find ROOT verb ---
+#     root = None
+#     for token in doc:
+#         if token.dep_ == "ROOT" and token.pos_ == "VERB":
+#             root = token
+#             # break
+
+
+#     # No verb → no event (design choice)
+#     if root is None:
+#         return [{
+#             "actor": None,
+#             "action": None,
+#             "object": None
+#         }]
+
+#     action = root.lemma_
+#     actor = None
+#     obj = None
+
+#     # --- dependency parsing from ROOT ---
+#     for child in root.children:
+#         if child.dep_ in ("nsubj", "nsubjpass"):
+#             span = doc[child.left_edge.i : child.right_edge.i + 1]
+#             actor = span.text
+
+#         # if child.dep_ in ("dobj", "obj"):
+#         #     if child.pos_ != "NUM":
+#         #         obj = child.text
+#         if child.dep_ in ("dobj", "obj", "pobj"):
+#             if child.pos_ == "NUM":
+#                 continue
+#             span = doc[child.left_edge.i : child.right_edge.i + 1]
+#             obj = span.text
+    
+#     # --- rule-based improvements ---
+
+#     # CVE overrides object
+#     cve = re.search(r"CVE-\d{4}-\d+", text)
+#     if cve:
+#         obj = cve.group()
+
+#     # Known actor override
+#     for known in known_actors:
+#         if known in text:
+#             actor = known
+#             break
+
+#     # Filter bad actors
+#     if actor and actor.lower() in bad_actors:
+#         actor = None
+
+#     return [{
+#         "actor": actor,
+#         "action": action,
+#         "object": obj
+#     }]
 
 
 import json
