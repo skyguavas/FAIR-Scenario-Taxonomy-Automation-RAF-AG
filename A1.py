@@ -3,22 +3,6 @@ import os
 import re
 
 
-def load_raw_records(path, limit=None):
-    records = []
-    with open(path, "r", encoding="utf-8") as f:
-        for i, line in enumerate(f):
-            if limit is not None and i >= limit:
-                break
-
-            row = json.loads(line)
-            records.append({
-                "sentence_id": row["id"],
-                "raw_text": row["text"],
-                "normalized_text": row["text"]
-            })
-    return records
-
-
 def is_structural_noise(text: str) -> bool:
     """Detect structural artifacts that should be filtered out entirely."""
     text = text.strip()
@@ -275,34 +259,3 @@ def apply_text_normalization(records):
         record["normalized_text"] = text
     
     return records
-
-
-def write_sample_results(records, output_path, limit = 10):
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    sample = records[:limit] if limit else records
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(sample, f, indent = 2, ensure_ascii = False)
-
-
-if __name__ == "__main__":
-    records = load_raw_records(
-        "data/raw/annoctr_train.json",
-        limit = None
-    )
-    print(f"Loaded records: {len(records)}")
-    
-    # Filtering
-    records = apply_filters(records)
-    print(f"After filtering: {len(records)}")
-    
-    # Normalization
-    records = apply_text_normalization(records)
-    print(f"After normalization: {len(records)}")
-    
-    # Writing results
-    write_sample_results(
-        records,
-        output_path="outputs/A1_results.json",
-        limit=None
-    )
-    print("Results written to outputs/A1_results.json")

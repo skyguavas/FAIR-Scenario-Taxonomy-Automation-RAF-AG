@@ -52,11 +52,9 @@ def extract_full_event(text):
     return {"actor": None, "action": None, "object": None}
 
 KNOWN_ACTORS = [
-    # exact strings
     "Lazarus", "Sandworm", "Cozy Bear", "Fancy Bear",
     "Emotet", "TrickBot", "QakBot", "IcedID",
 
-    # regex patterns
     re.compile(r"\bAPT\d+\b"),
     re.compile(r"\bFIN\d+\b"),
     re.compile(r"\bTA\d+\b"),
@@ -135,49 +133,3 @@ def extract_event_hybrid(text):
         return [{"actor": None, "action": None, "object": None}]
 
     return events
-
-
-def main():
-    with open("outputs/A1_results.json", "r", encoding='utf-8') as f:
-        a1_data = json.load(f)
-    
-    events = []
-    for record in a1_data:
-        text = record["normalized_text"]
-        sentence_id = record["sentence_id"]
-        
-        sentence_events = extract_event_hybrid(text)
-        for event in sentence_events:
-            event["source_sentence_id"] = sentence_id
-            events.append(event)
-
-    with open("outputs/A2_events.json", "w", encoding='utf-8') as f:
-        json.dump(events, f, indent=2, ensure_ascii=False)
-    
-    print("="*60)
-    print("VERIFICATION REPORT")
-    print("="*60)
-    print(f"A-1 input sentences: {len(a1_data)}")
-    print(f"A-2 output events:   {len(events)}")
-
-    has_actor = sum(1 for e in events if e['actor'])
-    has_action = sum(1 for e in events if e['action'])
-    has_object = sum(1 for e in events if e['object'])
-    
-    print(f"\nExtraction Quality:")
-    print(f"  Events with actor:  {has_actor}/{len(events)} ({has_actor/len(events)*100:.1f}%)")
-    print(f"  Events with action: {has_action}/{len(events)} ({has_action/len(events)*100:.1f}%)")
-    print(f"  Events with object: {has_object}/{len(events)} ({has_object/len(events)*100:.1f}%)")
-    
-    print(f"\n=== First 5 Events ===")
-    for i in range(min(10, len(events))):
-        print(f"\n{i+1}. Sentence ID: {events[i]['source_sentence_id']}")
-        print(f"   Actor:  {events[i]['actor']}")
-        print(f"   Action: {events[i]['action']}")
-        print(f"   Object: {events[i]['object']}")
-    
-    print("="*60)
-
-if __name__ == "__main__":
-    main()
-
