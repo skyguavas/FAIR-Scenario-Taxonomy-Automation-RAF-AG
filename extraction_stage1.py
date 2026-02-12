@@ -51,35 +51,78 @@ def extract_full_event(text):
 
 import re
 
+KNOWN_ACTORS = [
+    # exact strings
+    "Lazarus", "Sandworm", "Cozy Bear", "Fancy Bear",
+    "Emotet", "TrickBot", "QakBot", "IcedID",
+
+    # regex patterns
+    re.compile(r"\bAPT\d+\b"),
+    re.compile(r"\bFIN\d+\b"),
+    re.compile(r"\bTA\d+\b"),
+    re.compile(r"\bUNC\d+\b"),
+    re.compile(r"\bDEV-\d+\b"),
+]
+
+BAD_ACTORS = {"it", "this", "that", "these", "those", "we", "our", "us", "they", "their", "he", "she", "who", "which"}
 
 def extract_event_hybrid(text):
     doc = nlp(text)
     events = []
 
-    known_actors = ["APT28", "APT29", "Lazarus", "FIN7", "Emotet", "TrickBot"]
-    bad_actors = {"it", "this", "that", "malware", "trojan", "virus"}
+    # known_actors = ["APT1", "APT28", "APT29", "APT32", "APT33", "APT34", "APT41", "Lazarus", "FIN7", "FIN12", "TA505", "Sandworm",
+    #                 "Cozy Bear", "Fancy Bear", "Emotet", "TrickBot", "QakBot", "IcedID"]
 
+    # bad_actors = {"it", "this", "that", "these", "those", "we", "our", "us", "they", "their", "he", "she", "who", "which"}
+    
     for token in doc:
-        # Only consider actual verb predicates (skip AUX like "is/was/has")
-        if token.pos_ != "VERB" or token.dep_ == "aux":
+        if token.pos_ not in {"VERB", "AUX"}:
+            continue
+        if token.pos_ == "AUX":
             continue
 
         action = token.lemma_
         actor = None
         obj = None
 
-        # --- dependency parsing from THIS verb (fix: root -> token) ---
+        # # --- dependency parsing from THIS verb (fix: root -> token) ---
+        # for child in token.children:
+        #     if child.dep_ in ("nsubj", "nsubjpass"):
+        #         span = doc[child.left_edge.i : child.right_edge.i + 1]
+        #         actor = span.text
+
+        #     if child.dep_ in ("dobj", "obj", "pobj"):
+        #         if child.pos_ == "NUM":
+        #             continue
+        #         span = doc[child.left_edge.i : child.right_edge.i + 1]
+        #         obj = span.text
+        
+        # --- dependency parsing from THIS verb ---
         for child in token.children:
-            if child.dep_ in ("nsubj", "nsubjpass"):
+            # Regular subject (active voice)
+            if child.dep_ == "nsubj":
                 span = doc[child.left_edge.i : child.right_edge.i + 1]
                 actor = span.text
-
-            if child.dep_ in ("dobj", "obj", "pobj"):
+            
+            # Passive subject → it's actually the object!
+            elif child.dep_ == "nsubjpass":
+                span = doc[child.left_edge.i : child.right_edge.i + 1]
+                if not obj:  # Only set if we don't already have an object
+                    obj = span.text
+            
+            # Direct object
+            elif child.dep_ in ("dobj", "obj", "pobj"):
                 if child.pos_ == "NUM":
                     continue
                 span = doc[child.left_edge.i : child.right_edge.i + 1]
                 obj = span.text
-
+            
+            # Agent in passive voice (the real actor)
+            elif child.dep_ == "agent":
+                for subchild in child.children:
+                    if subchild.dep_ == "pobj":
+                        span = doc[subchild.left_edge.i : subchild.right_edge.i + 1]
+                        actor = span.text
         # --- rule-based improvements (PER EVENT) ---
 
         # CVE overrides object
@@ -87,14 +130,23 @@ def extract_event_hybrid(text):
         if cve:
             obj = cve.group()
 
-        # Known actor override
-        for known in known_actors:
-            if known in text:
-                actor = known
-                break
+        # Overriding junk actors with known actors
+        actor_is_junk = (actor is None) or (actor.strip().lower() in BAD_ACTORS)
+        if actor_is_junk:
+            for known in KNOWN_ACTORS:
+                if isinstance(known, re.Pattern):
+                    m = known.search(text)
+                    if m:
+                        actor = m.group(0)
+                        break
+                else:
+                    if known in text:
+                        actor = known
+                        break
+
 
         # Filter bad actors
-        if actor and actor.strip().lower() in bad_actors:
+        if actor and actor.strip().lower() in BAD_ACTORS:
             actor = None
 
         # Skip empty events (optional but usually helpful)
@@ -211,7 +263,7 @@ def main():
     print("="*60)
     print(f"A-1 input sentences: {len(a1_data)}")
     print(f"A-2 output events:   {len(events)}")
-    print(f"Match: {'✓ YES' if len(a1_data) == len(events) else '✗ NO - PROBLEM!'}")
+    # print(f"Match: {'✓ YES' if len(a1_data) == len(events) else '✗ NO - PROBLEM!'}")
     
     # Check how many have actors/actions/objects
     has_actor = sum(1 for e in events if e['actor'])
