@@ -74,8 +74,6 @@ Concretely, A-1 aims to:
 - **Preserve semantics** by avoiding paraphrasing or enrichment (normalization focuses on structure, not meaning).
 - **Improve parseability** by converting layout cues into consistent sentence-like forms.
 
----
-
 ### 2.2 Implemented Normalizations and Filters
 
 A-1 consists of two layers:
@@ -154,8 +152,6 @@ Some CTI sources use colon structures as titles. `normalize_colon_titles()` hand
 
 - If the left side looks like a short title and the right side is longer, return the right side.
 - Otherwise, keep the original text unchanged.
-
----
 
 ### 2.3 Why These Choices
 
