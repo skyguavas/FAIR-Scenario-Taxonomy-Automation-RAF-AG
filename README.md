@@ -201,7 +201,7 @@ For each normalized sentence, A-2:
 
 ### Note: What is spaCy?
 
-spaCy is an open-source NLP (Natural Language Processing) library for Python that can tokenize text and assign linguistic structure, including:
+spaCy is an open-source NLP library for Python that can tokenize text and assign linguistic structure, including:
 - **Part-of-speech tags** (e.g., whether a token is a `VERB`, `NOUN`, `AUX`, etc.)
 - **Dependency parsing**, which identifies grammatical roles and relationships such as:
   - `nsubj` (nominal subject — often the “actor”)
@@ -209,7 +209,7 @@ spaCy is an open-source NLP (Natural Language Processing) library for Python tha
   - `pobj` (object of a preposition — common in CTI phrases like “into the network”)
   - `agent` (passive “by …” phrases — often contains the actor)
 
-In this repo, spaCy is used as a **training-free baseline** to recover clause structure from normalized CTI sentences. The extractor does not rely on a labeled dataset; instead it uses spaCy’s syntactic output plus CTI-specific heuristics (CVE regex + known actor matching).
+In this repo, spaCy is used as a **training-free baseline** to recover clause structure from normalized CTI sentences. The extractor does not rely on a labeled dataset. Instead, it uses spaCy’s syntactic output plus CTI-specific heuristics (CVE regex + known actor matching).
 
 #### Step 1 - Finding candidate actions (verbs)
 - The extractor parses the sentence with spaCy (`en_core_web_sm`)
