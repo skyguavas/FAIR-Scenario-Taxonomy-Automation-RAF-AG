@@ -1,4 +1,4 @@
-# RAF-AG-based-CTI-decomposition
+# FAIR-Scenario-Taxonomy-Automation-RAF-AG
 
 This repo implements the first step of FAIR-aligned scenario automation: transforming raw, unstructured CTI text (AnnoCTR `text`) into:  
 (1) structurally normalized sentences (A-1), and  
