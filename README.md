@@ -1,14 +1,14 @@
 # RAF-AG-based-CTI-decomposition
 
 This repo implements the first step of FAIR-aligned scenario automation: transforming raw, unstructured CTI text (AnnoCTR `text`) into:  
-(1) structurally normalized sentences (A-1) and  
+(1) structurally normalized sentences (A-1), and  
 (2) extracted event objects (A-2) that capture *who did what to what (and optionally how)*.  
 
 ## 1. Overall Design
 
 ### 1.1 Goal
 **Core Question**:  
-Can unstructured CTI text be automatically transformed into a FAIR-aligned scenario structure (Threat / Asset / Method / Effect) ?
+Can unstructured CTI text be automatically transformed into a FAIR-aligned scenario structure (Threat / Asset / Method / Effect)?
 
 ### 1.2 Pipeline
 **End-to-end flow**
