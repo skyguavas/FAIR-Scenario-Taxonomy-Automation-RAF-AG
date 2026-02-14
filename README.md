@@ -7,11 +7,11 @@ This repo implements the first step of FAIR-aligned scenario automation: transfo
 ## 1. Overall Design
 
 ### 1.1 Goal
-**Core Question**:  
+**The core question being addressed is**:  
 Can unstructured CTI text be automatically transformed into a FAIR-aligned scenario structure (Threat / Asset / Method / Effect)?
 
 ### 1.2 Pipeline
-**End-to-end flow**
+**The end-to-end flow produced is as follows:**
 1. **Input**:  
     AnnoCTR dataset `text` field (raw CTI)  
   
@@ -32,7 +32,7 @@ Raw CTI text
 A-1: Text Normalization  ──►  normalized sentences (stable structure)
    │
    ▼
-A-2: Event Extraction     ──►  events: actor/action/object
+A-2: Event Extraction    ──►  events: actor/action/object
 ```
 
 ### 1.3 Data Model
@@ -67,12 +67,12 @@ python pipeline.py \
 
 ## 2. A-1: Text Normalization
 ### 2.1 Design Intent
-A-1’s purpose is to make raw CTI text *structurally stable* so that downstream event extraction (A-2) can operate on sentences with fewer formatting artifacts and less layout-driven ambiguity.  
+The purpose of this module is to make raw CTI text *structurally stable* so that downstream event extraction can operate on sentences with fewer formatting artifacts and less layout-driven ambiguity.  
 
 Concretely, A-1 aims to:  
-- **Reduce formatting variance** introduced by CTI sources (markdown, headers, bullet lists, captions, HTML/CSS fragments).
-- **Preserve semantics** by avoiding paraphrasing or enrichment (normalization focuses on structure, not meaning).
-- **Improve parseability** by converting layout cues into consistent sentence-like forms.
+- **Reduce formatting variance**, which is introduced by CTI sources (markdown, headers, bullet lists, captions, HTML/CSS fragments).
+- **Preserve semantics**, by avoiding paraphrasing or enrichment (normalization focuses on structure, not meaning).
+- **Improve parseability**, by converting layout cues into consistent sentence-like forms.
 
 ### 2.2 Implemented Normalizations and Filters
 
@@ -105,7 +105,7 @@ This filtering step enforces a clean separation between:
 - **formatting/metadata fragments** that would otherwise create false events.
   
 #### (B) IoC placeholder handling (implemented)
-To prevent IoCs from being incorrectly extracted as actors/objects, A-1 replaces them with stable placeholders:  
+To prevent IoCs from being incorrectly extracted as actors/objects, this module also replaces them with stable placeholders:  
 
 - URLs → `<URL>`
 - IPv4 (including defanged `[.]`) → `<IP_ADDRESS>`
@@ -125,19 +125,19 @@ A-1 also standardizes common markup formatting:
 #### (D) Structural rewriting into sentence-like forms (implemented)
 A-1 rewrites several common CTI structural patterns via `rewrite_structural_elements()`:
 
-1) **Markdown section headers → declarative sentence**
+1) **Markdown section headers to declarative sentences**
 - Input: `## Initial Access`
 - Output: `This section discusses Initial Access.`
 
-2) **Numbered subsection titles → declarative sentence**
+2) **Numbered subsection titles to declarative sentences**
 - Input: `2.1 Credential Theft`
 - Output: `This subsection discusses Credential Theft.`
 
-3) **Figure captions → declarative sentence**
+3) **Figure captions to declarative sentences**
 - Input: `Figure 3: Attack flow overview`
 - Output: `Figure 3 illustrates Attack flow overview.`
 
-4) **“short-left - explanation” artifact lines → declarative sentence**
+4) **“short-left - explanation” artifact lines to declarative sentences**
 - Input: `Loader - responsible for staging payload`
 - Output: `The Loader component is responsible for staging payload.`
 
@@ -148,7 +148,7 @@ A-1 rewrites several common CTI structural patterns via `rewrite_structural_elem
 
 
 #### (E) Colon title normalization (implemented)
-Some CTI sources use colon structures as titles. `normalize_colon_titles()` handles these by collapsing “title: long sentence” patterns into the main content.  
+Some sources use colon structures as titles. `normalize_colon_titles()` handles these by collapsing “title: long sentence” patterns into the main content.  
 
 - If the left side looks like a short title and the right side is longer, return the right side.
 - Otherwise, keep the original text unchanged.
@@ -160,7 +160,7 @@ CTI text frequently encodes meaning through layout such as headers, bullets, cap
 - consistent punctuation and markup.
 - reduced presence of purely structural fragments.
 
-These A-1 steps are chosen to:
+These steps are chosen to:
 - **minimize false positives**, by filtering structural fragments and IoC-only lines.
 - **reduce brittleness** by normalizing IoCs and markdown.
 - **improve syntactic consistency** by rewriting headers/captions into declarative sentences.
@@ -178,23 +178,23 @@ Here, an “event” is defined as:
 - **actor**: who performed the action, such as a threat group, malware, attacker, etc.
 - **action**: the action that occurred or the main verb
 - **object**: what the action was applied to, such as the victim, system, data, CVE, credential, etc.
-- **source_sentence_id**: provenance back to the sentence
+- **source_sentence_id**: tracks origin back to the sentence
 
-A-2 aims to:  
+This module aims to:  
 - turn text into a consistent event schema.
 - preserve source back to the sentence, for errors to be debuggable.
 - handle common CTI grammar patterns, such as active voice, passive voice, “by X”.
 
 ### 3.2 Implemented Event Extraction
-This implementation is **hybrid**:
-- **Dependency Parsing** provides grammatical roles (subject/object)
-- **CTI Heuristics** recover high-signal CTI entities when syntax is missing or noisy (CVE detection + known actor matching)
+This implementation is **hybrid**, comprising of:
+- **Dependency Parsing**, which provides grammatical roles (subject/object)
+- **CTI Heuristics**, which helps to recover high-signal CTI entities when syntax is missing or noisy (CVE detection + known actor matching)
 
 At a high level, the method does the following:
-1. Parse the sentence
-2. For each verb, attempt to build an event
-3. Apply CTI-specific recovery rules
-4. emit 0...N events
+1. Parses the sentence
+2. For each verb, attempts to build an event
+3. Applies CTI-specific recovery rules
+4. emits 0...N events
 
 For each normalized sentence, A-2:  
 #### Step 1 - Finding candidate actions (verbs)
@@ -254,8 +254,8 @@ Object spans are expanded using `left_edge:right_edge` to capture full phrases.
 Dependency parsing is not always sufficient for CTI due to missing subjects, unusual formatting, or indicator-heavy text. This implementation adds two CTI-specific recovery rules:
 
 1) **CVE override**
-If a CVE identifier is present anywhere in the sentence (CVE-\d{4}-\d+),
-the extractor sets:
+If a CVE identifier is present anywhere in the sentence (CVE-\d{4}-\d+), and denotes a public ID for known security vulnerabilities.
+The extractor sets:
   - object = <CVE-ID>
 - Rationale: CVE IDs are high-signal and often the most important “object” in exploitation narratives even when grammar is incomplete.
 
@@ -277,11 +277,11 @@ To prevent meaningless actors, the extractor drops pronouns/demonstratives:
 If the recovered actor is still junk, it is set to null.
 
 #### Step 5 — Emit events (possibly multiple per sentence)
-One event per verb
+**One event per verb**
 The extractor may emit multiple events from the same sentence because it iterates over every verb token.  
   - This preserves partial events when actor is omitted but object exists (common in passive CTI)
 
-Emission rule (currently)
+**Emission rule (currently)**
 An event is emitted if at least one of (actor, object) is present. This keeps partial events when CTI omits an explicit actor.  
 
 If no events are found, return a single null event to keep outputs consistent:
@@ -290,21 +290,40 @@ If no events are found, return a single null event to keep outputs consistent:
 This keeps output shape consistent for debugging and downstream evaluation.  
 
 ### 3.3 Why These Choices
-- - CTI text often contains enough clause structure for dependency parsing to recover **subject/object** relationships without training data.
-- Dependency parsing first: It gives a transparent baseline “who/what” extraction without requiring training labels.
-- Regex/dictionary heuristics are necessary because sentences include structured identifiers (CVE IDs, APT/FIN/UNC IDs, malware names) that are high-signal but not guaranteed to appear as clean subjects/objects.
-- Verb-by-verb extraction improves recall because sentences frequently contain multiple actions.
-- Junk-actor filtering prevents pronouns (“it/they/this”) from becoming meaningless threat actors.
-
+- Dependency parsing as the baseline: CTI sentences usually preserve standard clause structure even when the surrounding formatting is noisy. Dependency relations like nsubj, obj, and agent give a direct, training-free way to recover the core relationship: who did what to what.  
+- Training-free and explainable: This project is early-stage and does not assume labeled event data. Dependency parsing provides a deterministic, inspectable baseline: when an event is extracted, you can trace it back to specific dependency edges (e.g., nsubj → actor, obj/pobj → object). This makes failures easy to diagnose and makes rule/filter iteration straightforward compared to a black-box approach.
+- Why dependency parsing works on CTI: Even when text comes from messy sources (blogs, PDFs, bullet lists), the key claims are typically written as ordinary English statements like “X exploited Y”, “X deployed Z”, or “Y was compromised by X”. Dependency parsing is designed to recover exactly these grammatical links (subject ↔ verb ↔ object / agent), so actor/action/object extraction is feasible without labeled training data.  
+- Heuristics for CTI-specific tokens: Reports frequently contain high-signal identifiers (CVE IDs, APT/FIN/UNC labels, malware family names) that may not appear as clean grammatical subjects/objects. Regex and dictionaries improve recall for these cases without adding model complexity.  
+- Verb-by-verb extraction for coverage: Sources commonly compress multiple actions into a single sentence. Anchoring extraction on each verb increases recall and produces more events than forcing a single event per sentence.
+- Junk-actor suppression for precision: Pronouns and demonstratives (“it/they/this”) are rarely meaningful threat entities. Filtering them prevents noisy “actors” that would pollute downstream scenario assembly.
 
 ### 3.4 Known Limitations / Improvement Ideas
 
-- **Meta-sentence false positives**: rewritten A-1 sentences like “This section discusses …” can produce non-attack events unless filtered/tagged.
-- **No document-level co-reference**: “the actor / they / the malware” is not linked across sentences.
-- **Generic verbs**: actions like `use`, `include`, `show` may be extracted and can reduce precision without a verb blocklist.
-- **Object typing**: objects mix assets, data, vulnerabilities, and artifacts (no classification yet).
+- **Meta-sentence false positives**
+  **Limitation**: A-1 sometimes rewrites structural text (headers, captions) into grammatical sentences (e.g., “This section discusses …”, “Figure 3 illustrates …”). These contain normal subjects and verbs, so A-2 can mistakenly treat them as attack events (e.g., actor="This section", action="discuss").  
+  
+  **Improvement**: Tag A-1 outputs as `meta` vs `content` and skip `meta` in A-2, or add a small blocklist of meta.  
 
-Improvements:
-- Tag A-1 outputs as `meta` vs `content` and skip `meta` in A-2.
-- Add blocklists for meta verbs (`discuss`, `illustrate`, `describe`) and meta actors (`section`, `figure`, `table`).
-- Add a confidence score based on whether actor/object were recovered via dependencies vs heuristics.
+  **Reason:** This is a high-impact precision win with minimal recall loss because meta sentences rarely describe attacker behavior, but they are syntactically “event-like,” making them a common false-positive source.
+
+- **No document-level co-reference**
+  **Limitation**: The extractor operates sentence-by-sentence, so it does not connect references like “the actor”, “they”, or “the malware” back to an entity named earlier in the report. This leads to missing or dropped actors even when the document context makes them obvious.  
+  
+  **Improvement**: Adding lightweight co-reference resolution or a rolling “last known actor/malware” memory per document.  
+
+  **Reason**: CTI reports frequently name the actor once and then rely on pronouns/aliases. Recovering these links would improve recall and consistency, which would directly help later in clustering into scenarios and mapping into FAIR Threat.  
+
+- **Generic verb noise**
+  **Limitation**: Some verbs are grammatical but not specific CTI actions (e.g., use, include, show, discuss). If extracted as action, they can produce low-signal events and reduce precision.  
+  
+  **Improvement**: Add a verb blocklist/allowlist (e.g., drop meta/reporting verbs such as `discuss`, `illustrate`, `describe`, `show`) and optionally normalize generic verbs.  
+  
+  **Reason**: Downstream scenario automation depends on action verbs that correspond to attacker behavior, such as “exploit”, “deploy”, “exfiltrate”. Filtering generic/reporting verbs yields a cleaner event stream and improves alignment with FAIR Method/Effect later on.  
+
+- **Object typing**
+  **Limitation**: The object field currently captures whatever syntactic object is available, which can mix very different things: assets (“domain controller”), data (“credentials”), vulnerabilities (“CVE-…”) and artifacts (“payload”, “DLL”). This makes direct mapping to FAIR Asset/Method/Effect ambiguous.  
+  
+  **Improvement**: Adding a lightweight typing layer (rules/NER) to label objects as ASSET, DATA, VULNERABILITY, or ARTIFACT.  
+
+  **Reason**: FAIR scenario automation requires separating *what is targeted* (Asset) from *how it is done* (Method) and *what was impacted* (Effect). Typing the object early enables consistent scenario assembly, control mapping, and later quantification.
+
