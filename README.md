@@ -198,6 +198,19 @@ At a high level, the method does the following:
 4. emits 0...N events
 
 For each normalized sentence, A-2:  
+
+### Note: What is spaCy?
+
+spaCy is an open-source NLP (Natural Language Processing) library for Python that can tokenize text and assign linguistic structure, including:
+- **Part-of-speech tags** (e.g., whether a token is a `VERB`, `NOUN`, `AUX`, etc.)
+- **Dependency parsing**, which identifies grammatical roles and relationships such as:
+  - `nsubj` (nominal subject — often the “actor”)
+  - `obj/dobj` (object — often the “target”)
+  - `pobj` (object of a preposition — common in CTI phrases like “into the network”)
+  - `agent` (passive “by …” phrases — often contains the actor)
+
+In this repo, spaCy is used as a **training-free baseline** to recover clause structure from normalized CTI sentences. The extractor does not rely on a labeled dataset; instead it uses spaCy’s syntactic output plus CTI-specific heuristics (CVE regex + known actor matching).
+
 #### Step 1 - Finding candidate actions (verbs)
 - The extractor parses the sentence with spaCy (`en_core_web_sm`)
 - It iterates over tokens and uses main verbs as event anchors:
