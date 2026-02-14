@@ -53,6 +53,18 @@ def pipeline(input_path, a1_out, a2_out, limit=None):
         output_path = a1_out,
         limit = None
     )
+
+    print("\n" + "="*60)
+    print("SAMPLE RESULTS FOR A-1 (Raw → Normalized)")
+    print("="*60)
+
+    for i, r in enumerate(records[:5], start=1):
+        print(f"\n--- Example {i} ---")
+        print(f"Sentence ID: {r['sentence_id']}")
+        print(f"Raw: {r['raw_text']}")
+        print(f"Normalized: {r['normalized_text']}")
+
+    print("="*60 + "\n")
     print("Text normalization results written to outputs/A1_results.json")
 
     # A-2 Event Extraction
@@ -87,12 +99,32 @@ def pipeline(input_path, a1_out, a2_out, limit=None):
     print(f"  Events with action: {has_action}/{len(events)} ({has_action/len(events)*100:.1f}%)")
     print(f"  Events with object: {has_object}/{len(events)} ({has_object/len(events)*100:.1f}%)")
     
-    print(f"\n=== First 5 Events ===")
-    for i in range(min(10, len(events))):
-        print(f"\n{i+1}. Sentence ID: {events[i]['source_sentence_id']}")
-        print(f"   Actor:  {events[i]['actor']}")
-        print(f"   Action: {events[i]['action']}")
-        print(f"   Object: {events[i]['object']}")
+    a2_sent_start = 7 
+    a2_sent_end   = 17
+
+    print(f"\n=== A-2 Events for sentences [{a2_sent_start}:{a2_sent_end}] ===")
+    events_by_sid = {}
+    for e in events:
+        sid = e["source_sentence_id"]
+        events_by_sid.setdefault(sid, []).append(e)
+
+    for idx in range(a2_sent_start, min(a2_sent_end, len(a1_data))):
+        rec = a1_data[idx]
+        sid = rec["sentence_id"]
+
+        print(f"\n--- Sentence idx {idx} | ID: {sid} ---")
+        print(f"Normalized: {rec['normalized_text']}")
+
+        sent_events = events_by_sid.get(sid, [])
+        if not sent_events:
+            print("Events: (none)")
+            continue
+
+        for j, ev in enumerate(sent_events, start=1):
+            print(f"  {j}. Actor:  {ev.get('actor')}")
+            print(f"     Action: {ev.get('action')}")
+            print(f"     Object: {ev.get('object')}")
+
     
     print("="*60)
 

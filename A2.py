@@ -46,7 +46,7 @@ def extract_full_event(text):
                 if child.dep_ == "dobj":
                     obj = child.text
             
-            if actor and action:  # At minimum need actor + action
+            if actor and action:
                 return {"actor": actor, "action": action, "object": obj}
     
     return {"actor": None, "action": None, "object": None}
@@ -62,7 +62,8 @@ KNOWN_ACTORS = [
     re.compile(r"\bDEV-\d+\b"),
 ]
 
-BAD_ACTORS = {"it", "this", "that", "these", "those", "we", "our", "us", "they", "their", "he", "she", "who", "which"}
+# BAD_ACTORS = {"it", "this", "that", "these", "those", "we", "our", "us", "they", "their", "he", "she", "who", "which"}
+BAD_ACTORS = {}
 
 def extract_event_hybrid(text):
     doc = nlp(text)

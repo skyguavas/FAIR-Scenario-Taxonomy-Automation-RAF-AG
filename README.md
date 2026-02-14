@@ -2,7 +2,7 @@
 
 This repo implements the first step of FAIR-aligned scenario automation: transforming raw, unstructured CTI text (AnnoCTR `text`) into:  
 (1) structurally normalized sentences (A-1), and  
-(2) extracted event objects (A-2) that capture *who did what to what (and optionally how)*.  
+(2) extracted event objects (A-2) that capture *who did what to what*.  
 
 ## 1. Overall Design
 
@@ -167,9 +167,10 @@ These steps are chosen to:
 
 However, there is a trade-off.  
 Some rewrites introduce light templating language for headers and captions, such as "This section discusses ...", "Figure X illustrates ...".  
-While this is intentional, as turning into declarative sentences improves syntactic consistency for parsing, it introduces syntheitc subjects or verbs that can be mistakenly interpreted as real events. Downstream extraction can mitigate this by tagging these sentences as meta during A-1 or filtering them during A-2.  
+While this is intentional, as turning into declarative sentences improves syntactic consistency for parsing, it introduces synthetic subjects or verbs that can be mistakenly interpreted as real events.  
+Downstream extraction can mitigate this by tagging these sentences as meta during A-1 or filtering them during A-2.  
 
-## 3. A-2 Event Extraction (What + How + Why)
+## 3. A-2: Event Extraction
 ### 3.1 Design Intent
 
 A-2 converts **normalized CTI sentences (A-1 output)** into **event-level structures** that can later be mapped into FAIR-aligned scenario fields.  
@@ -186,7 +187,7 @@ This module aims to:
 - handle common CTI grammar patterns, such as active voice, passive voice, “by X”.
 
 ### 3.2 Implemented Event Extraction
-This implementation is **hybrid**, comprising of:
+This implementation is **hybrid**, and comprises:
 - **Dependency Parsing**, which provides grammatical roles (subject/object)
 - **CTI Heuristics**, which helps to recover high-signal CTI entities when syntax is missing or noisy (CVE detection + known actor matching)
 
@@ -199,7 +200,7 @@ At a high level, the method does the following:
 For each normalized sentence, A-2:  
 #### Step 1 - Finding candidate actions (verbs)
 - The extractor parses the sentence with spaCy (`en_core_web_sm`)
-- It iterates over tokens and uses main verbs as event anchors::
+- It iterates over tokens and uses main verbs as event anchors:
     - includes `VERB`
     - ignores `AUX` or auxiliary to avoid low-signal actions like be/have/do. These usually encode tense/modality rather than a CTI action.  
 
@@ -212,15 +213,15 @@ For the current verb token, A-2 attempts to extract an actor via dependency rela
 - **Active voice subject**
   - If a child of the verb has `dep_ == "nsubj"`, that child is treated as the actor.
   - `nsubj` denotes the actor span.  
-  - The actor is expanded to a full noun phrase span, by using `left_edge:right_edge` to capture multiword actors  
+  - The actor is expanded to a full noun phrase span, by using `left_edge:right_edge` to capture multiword actors.  
   - example: `The Lazarus Group` instead of `Group`
 
-This span expansion matters as CTI actors are often mutliworded. If we only took a single token, we would lose critical context.
+This span expansion matters as actors are often multiword. If we only took a single token, we would lose critical context.
 
 - **Passive voice agent**
 Passive constructions often place the true actor inside a “by …” phrase.  
 example: `The payload was deployed by Lazarus.`  
-spaCy represents this as:  
+spaCy represents this as:
   - agent dependency (the “by”-phrase)
   - with a pobj child inside it (“Lazarus”)
 
@@ -229,7 +230,7 @@ So, the process:
   - then searches its children for dep_ == "pobj"
   - and uses that span as actor
 
-If the actor is missing or junk (pronouns/demonstratives), A-2 falls back to known-actor scanning (see Step 4).
+If the actor is missing A-2 falls back to known-actor scanning (see Step 4).
 
 #### Step 3 — Extracting object (what was acted on)
 For the same verb token, A-2 tries to extract an object. Since both direct objects and prepositional targets are crucial, extraction is ordered:  
@@ -260,21 +261,13 @@ The extractor sets:
 - Rationale: CVE IDs are high-signal and often the most important “object” in exploitation narratives even when grammar is incomplete.
 
 2) **Known actor recovery**
-Sometimes the parsed actor is:
-  - missing (no nsubj, no agent)
-  - or junk (pronoun/demonstrative)
-
+Sometimes the parsed actor is missing (no nsubj, no agent).  
 In that case, the extractor scans the raw sentence for known actors:
   - exact string actors: `Lazarus`, `Sandworm`, `Emotet`, `TrickBot`, etc.
   - regex actor IDs: `APT\d+`, `FIN\d+`, `TA\d+`, `UNC\d+`, `DEV-\d+`, etc.
 If a match is found, it becomes the actor.  
 
 - Rationale: CTI actor names/IDs often appear as proper tokens that may not always be recovered as grammatical subjects.
-
-3) **Junk actor suppression**
-To prevent meaningless actors, the extractor drops pronouns/demonstratives:
-  - example: `it`, `this`, `they`, `we`
-If the recovered actor is still junk, it is set to null.
 
 #### Step 5 — Emit events (possibly multiple per sentence)
 **One event per verb**
@@ -295,7 +288,6 @@ This keeps output shape consistent for debugging and downstream evaluation.
 - Why dependency parsing works on CTI: Even when text comes from messy sources (blogs, PDFs, bullet lists), the key claims are typically written as ordinary English statements like “X exploited Y”, “X deployed Z”, or “Y was compromised by X”. Dependency parsing is designed to recover exactly these grammatical links (subject ↔ verb ↔ object / agent), so actor/action/object extraction is feasible without labeled training data.  
 - Heuristics for CTI-specific tokens: Reports frequently contain high-signal identifiers (CVE IDs, APT/FIN/UNC labels, malware family names) that may not appear as clean grammatical subjects/objects. Regex and dictionaries improve recall for these cases without adding model complexity.  
 - Verb-by-verb extraction for coverage: Sources commonly compress multiple actions into a single sentence. Anchoring extraction on each verb increases recall and produces more events than forcing a single event per sentence.
-- Junk-actor suppression for precision: Pronouns and demonstratives (“it/they/this”) are rarely meaningful threat entities. Filtering them prevents noisy “actors” that would pollute downstream scenario assembly.
 
 ### 3.4 Known Limitations / Improvement Ideas
 
@@ -327,3 +319,98 @@ This keeps output shape consistent for debugging and downstream evaluation.
 
   **Reason**: FAIR scenario automation requires separating *what is targeted* (Asset) from *how it is done* (Method) and *what was impacted* (Effect). Typing the object early enables consistent scenario assembly, control mapping, and later quantification.
 
+- **Junk actor suppression**
+  **Limitation**: To prevent meaningless actors, the extractor should drop pronouns and demonstratives, such as it, this, they, we.
+
+  **Reason**: Filtering them would prevent noisy “actors” that would pollute downstream scenario assembly.
+
+## 4. Understanding of FAIR Scenario Automation
+This project is scoped to the **front-end of a FAIR automation pipeline**. FAIR (Factor Analysis of Information Risk) ultimately needs a well-defined risk scenario before any quantitative modeling is possible. In practice, the biggest bottleneck is that CTI is written as narrative text, while FAIR needs structured scenario inputs. The role of this repo is to bridge that gap by producing structured events from raw CTI.
+
+### 4.1 How A-1 and A-2 fit into a future FAIR pipeline
+A realistic automation flow looks like:  
+1. **Raw CTI (unstructured text)**
+   - threat reports, blogs, incident writeups
+   - formatting is inconsistent (headers, bullets, captions, IoCs)
+  
+2. **A-1: Text Normalization (structure first)**
+   - converts layout-driven text into sentence-like units
+   - removes non-semantic artifacts
+   - ensures that A-2 sees stable, parseable inputs
+
+3. **A-2: Event Extraction (event atoms)**
+   - converts each sentence into `(actor, action, object)` events
+   - preserves origin (`source_sentence_id`)
+   - outputs are interpretable and can be audited
+
+4. **Scenario Assembly (future step; not implemented)**
+   - merge and cluster events into a coherent scenario:
+     - group by actor / campaign / malware family
+     - connect sequential actions into an attack chain
+   - resolve entity consistency (aliases, pronouns, “the group”, “the malware”)
+
+5. **FAIR Scenario Taxonomy Mapping (future step; not implemented)**
+   - map the assembled scenario into FAIR fields:
+     - Threat / Asset / Method / Effect
+
+6. **Quantification (out of scope here)**
+   - once the scenario is defined, FAIR modeling estimates frequency and loss magnitude
+   - requires additional inputs (controls, asset values, exposure, etc.)
+
+This repo covers steps (2) and (3). Everything after event extraction is intentionally left as future work.
+
+### 4.2 How extracted events would map to FAIR fields
+FAIR scenario definitions are typically framed as:
+
+- **Threat** — who is performing the attack  
+- **Asset** — what is being targeted  
+- **Method** — how the attack is carried out  
+- **Effect** — what security impact occurs  
+
+A-2 events do not directly output FAIR fields, but they provide the raw material needed to achieve further goals.  
+
+#### Threat (who)
+- **Primary source:** `actor`
+- Examples:
+  - `actor = "Lazarus"` → Threat = Lazarus
+  - `actor = null` → Threat may be inferred later via co-reference or clustering
+- **What’s needed later:** actor normalization (aliases), confidence scoring, “threat archetype” fallback when unnamed.
+
+#### Asset (what is targeted)
+- **Primary source:** `object` (when it refers to a system/resource)
+- Examples:
+  - `object = "domain controller"` → Asset = identity infrastructure
+  - `object = "credentials"` → this is not an asset; it is likely data (needs typing)
+- **What’s needed later:** object typing so we can distinguish ASSET vs DATA vs ARTIFACT.
+
+#### Method (how)
+- **Primary source:** `action` + supporting phrases/tools (partly captured through `object` and prepositional targets)
+- Examples:
+  - `action = "exploit"`, `object = "CVE-2021-44228"` → Method = exploitation of known vulnerability
+  - `action = "deploy"`, `object = "loader"` → Method = malware deployment
+- **What’s needed later:** explicit extraction of tool/technique mentions
+
+#### Effect (impact)
+- **Primary source:** usually NOT reliably captured at the verb-object level in this baseline
+- Some effects can be hinted by certain verbs/objects:
+  - `action = "exfiltrate"`, `object = "data"` → confidentiality impact
+  - `action = "encrypt"`, `object = "files"` → availability impact (ransomware)
+- **What’s needed later:** explicit impact extraction and normalization (confidentiality/integrity/availability), plus linking to loss outcome categories.
+
+### 4.3 Why this “event-first” approach makes sense for automation
+- FAIR requires scenario components to be **explicit and repeatable**. A-2 events provide repeatable units that can be audited.
+- CTI narratives often describe multi-step attacks. By extracting verb-level events, later steps can:
+  - order and cluster events into an attack chain (similar to RAF-AG attack graph ideas)
+  - connect those chains to FAIR scenario templates
+- Keeping A-1 and A-2 modular allows future iterations to:
+  - improve extraction without changing downstream mapping logic
+  - add additional fields (method/tool/effect) progressively
+
+### 4.4 Limitations and what they imply for FAIR automation
+
+- **Actor continuity:** Without co-reference, many events will have `actor=null`, which makes Threat mapping incomplete.
+- **Asset vs data ambiguity:** Without object typing, “credentials” and “domain controller” both appear as `object`, but they feed different FAIR fields.
+- **Method details missing:** The baseline captures the main verb but may miss “how” phrases (tools, vectors, techniques), limiting Method fidelity.
+- **Effect is not explicit:** Most CTI sentences describe actions, not quantified impact; effect extraction needs a later dedicated step.
+
+These limitations motivate the improvement ideas listed in Section 3.4, because each directly increases the quality of mapping from events to FAIR scenario fields.  
